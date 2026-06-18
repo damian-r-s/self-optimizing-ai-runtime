@@ -88,10 +88,10 @@ Unified interface for OpenAI, Anthropic, vLLM, and custom models.
 
 Once the control plane is stable, ML-based optimization is added.
 
-- **Quality Prediction Model** — predicts expected output quality per model.
-- **Latency Prediction Model** — predicts latency based on model, load, and prompt length.
+- **Quality Prediction Model** — LightGBM/scikit-learn model over tabular features (model, prompt length, provider, time of day) predicting expected output quality per model.
+- **Latency Prediction Model** — same tabular approach, predicting latency based on model, load, and prompt length.
 - **Sampling Optimization** — dynamic adjustment of temperature, top-p, top-k, and max tokens.
-- **Prompt Compression Model** — small transformer that rewrites prompts to reduce token count by 20–60%.
+- **Prompt Compression** — [LLMLingua](https://github.com/microsoft/LLMLingua) to reduce token count by 20–60%, instead of training a custom compression transformer.
 - **Cost-Aware Model Selection** — ML-based scoring:
 
   ```python
@@ -104,7 +104,7 @@ Once the control plane is stable, ML-based optimization is added.
 
 The research-grade layer.
 
-- **RL Policy Engine** — learns optimal routing and optimization strategies.
+- **RL Policy Engine** — starts as a contextual bandit (Thompson sampling / Vowpal Wabbit) since model routing is fundamentally a contextual bandit problem; graduates to full RL (RLlib) only if sequential effects (e.g. multi-turn sessions) prove to matter.
 - **Reward Function**:
 
   ```python
@@ -144,16 +144,20 @@ Optimized Response
 | **API Gateway** | FastAPI, JWT/API keys, rate limiting, request validation |
 | **Prompt Analyzer** | embedding model, complexity estimator, token predictor |
 | **Router** | rule-based (Phase 1), ML-based (Phase 2), RL-based (Phase 3) |
-| **Inference Engine** | vLLM, OpenAI, Anthropic, batching, caching, fallback |
+| **Inference Engine** | LiteLLM (unified provider abstraction, fallback, retries, cost tracking) over vLLM, OpenAI, Anthropic; batching; caching |
 | **Learning Loop** | collects metrics, updates policies, improves routing |
 | **Observability** | Prometheus, Grafana, OpenTelemetry, PostgreSQL |
 
 ### Technology Stack
 
-- **Languages:** Python, C++ (optional kernels)
-- **AI/ML:** PyTorch, HuggingFace, RLlib / custom RL
+- **Languages:** Python (C++ kernels deferred until a measured bottleneck justifies them)
+- **Model abstraction & routing:** [LiteLLM](https://github.com/BerriAI/litellm) — unified interface across 100+ providers with built-in fallback, retries, and cost tracking, instead of hand-rolling Milestones 1/2/4/5
+- **Semantic cache:** Redis Stack (vector search) or [GPTCache](https://github.com/zilliztech/GPTCache) — reuses the existing Redis dependency instead of adding a separate vector DB
+- **Phase 2 ML:** LightGBM / scikit-learn for the (tabular) quality and latency predictors; [LLMLingua](https://github.com/microsoft/LLMLingua) for prompt compression instead of training a custom transformer
+- **Phase 3 routing:** start with a contextual bandit (e.g. Thompson sampling, Vowpal Wabbit) — model routing is a contextual bandit problem, not sequential RL — before reaching for RLlib / full RL
 - **Backend:** FastAPI, Redis, PostgreSQL
-- **Infrastructure:** Docker, Kubernetes, GPU nodes, Prometheus, Grafana
+- **Infrastructure:** Docker Compose for MVP; Kubernetes only once there's an actual scaling need
+- **Observability:** Prometheus, Grafana, OpenTelemetry
 
 ---
 
